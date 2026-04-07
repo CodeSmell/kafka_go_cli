@@ -1,0 +1,10 @@
+app_name: kafka-go-cli-local
+log_level: debug
+dry_run: false
+run_once: false
+no_delete_files: true
+kafka:
+  brokers:
+    - localhost:9092
+  topic: test-topic
+  acks: 1

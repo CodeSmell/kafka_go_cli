@@ -26,7 +26,16 @@ go.work.sum
 
 # env file
 .env
+.gopath/
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+
+/bin/
+/target
+
+/.DS_Store
+**/.DS_Store
+
+
