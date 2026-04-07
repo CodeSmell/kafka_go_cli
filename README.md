@@ -20,17 +20,17 @@ kafka_go_cli/
   ├── internal/
   │   ├── cli/
   │   │   ├── root.go
-  │   │   └── app.go
-  │   └── cli/
+  │   │   └── scan_cmd.go
+  │   └── file/
   │       ├── poller.go              # DirectoryPoller + builder + FileProcessor interface
+  |       ├── poller_test.go         # Tests
   │       ├── processor_kafka.go     # KafkaFileProcessor implementation
   │       ├── processor_pulsar.go    # PulsarFileProcessor implementation
-  │       ├── processor_log.go       # LogFileProcessor (for testing, or optional built-in)
-  │       └── poller_test.go         # Tests
+  │       └── processor_log.go       # LogFileProcessor (for testing, or optional built-in)
   ├── configs/
-  │   └── README.md
+  │   └── sample config file
   └── docs/
-      └── README.md
+      └── additional doc files
 ```
 
 Common Go layout:
