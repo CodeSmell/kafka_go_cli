@@ -1,7 +1,11 @@
 package main
 
-import "fmt"
+import (
+	"os"
+
+	"kafka_go_cli/internal/cli"
+)
 
 func main() {
-	fmt.Println("kafka-go-cli: project scaffold initialized")
+	os.Exit(cli.Execute())
 }

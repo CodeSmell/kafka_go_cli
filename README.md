@@ -18,7 +18,15 @@ kafka_go_cli/
   │   └── kafka-go-cli/
   │       └── main.go
   ├── internal/
-  │   └── README.md
+  │   ├── cli/
+  │   │   ├── root.go
+  │   │   └── app.go
+  │   └── cli/
+  │       ├── poller.go              # DirectoryPoller + builder + FileProcessor interface
+  │       ├── processor_kafka.go     # KafkaFileProcessor implementation
+  │       ├── processor_pulsar.go    # PulsarFileProcessor implementation
+  │       ├── processor_log.go       # LogFileProcessor (for testing, or optional built-in)
+  │       └── poller_test.go         # Tests
   ├── configs/
   │   └── README.md
   └── docs/
@@ -31,29 +39,84 @@ Common Go layout:
 - `configs/` stores config files
 - `docs/` stores documents and learning notes 
 
-## Basic commands for developer workflow 
-Unlike Java, building the Go project produces an executable artifact.
+## Basic commands for developer workflow
+Unlike Java, building Go produces a native executable artifact. During development, using `make` keeps the workflow fast and repeatable. The underlying Go commands can be found in the `Makefile`.
 
-Run the scaffold:
+### Basic commands during development
+Run all quality checks as you develop
 
 ```bash
-go run ./cmd/kafka-go-cli
+make check
 ```
 
-Format code:
+Cleanup and verify everything before creating a PR
 
 ```bash
-go fmt ./...
+make ci
+```
+### Running the application
+
+Run the app (with Make). This will create an executable file and run it
+
+```bash
+make run ARGS="--log-level debug --no-delete-files --run-once --message-location ~/dev/messages"
 ```
 
-Run tests:
+Run the app (with Go). This will run the app without creating an executable file.
 
 ```bash
-go test ./...
+go run ./cmd/kafka-go-cli --log-level debug --no-delete-files --message-location ~/dev/messages
 ```
 
-Vet code:
+
+## Current CLI and config behavior
+- Cobra command tree with a single command (no subcommands)
+- Viper-based config resolution using this precedence:
+  - defaults
+  - config file (optional)
+  - environment variables
+  - CLI flags (highest priority)
+
+### CLI parameters
+Running the application
 
 ```bash
-go vet ./...
+go run ./cmd/kafka-go-cli [flags]
+```
+
+| Parameter | Description |
+|---|---|
+| `--config` | Optional path to a config file (for example YAML). |
+| `--log-level` | Sets logging level. Use `debug`, `info`, `warn`, or `error`. |
+| `--message-location` | Directory to scan for message files (can come from flag, config file, or env). |
+| `--check` | Validate resolved config and exit. |
+| `--run-once` | Runs a single scan cycle then exits. Default is `false`. |
+| `--no-delete-files` | Keeps files after processing. Default is `true`. |
+| `--delay` | Number of ms to wait between polling cycles |
+| `--max-cycles` | Max number times to poll. If < 0 then use run-once or keep polling indefinitely. Default is -1 |
+| `--no-op` | will not attempt to do anything with the file (for testing) |
+
+Logs are structured text logs using Go's standard `log/slog` package.
+
+## Sample commands 
+
+Show command tree:
+
+```bash
+go run ./cmd/kafka-go-cli --help
+```
+
+Run the scan and start publishing
+
+```bash
+go run ./cmd/kafka-go-cli --message-location ~/dev/messages
+```
+
+To run the application while only checking the configuration add the `--check` flag
+
+```bash
+go run ./cmd/kafka-go-cli \
+--config ./configs/config.sample.yaml \
+--message-location ~/dev/messages \
+--check
 ```
