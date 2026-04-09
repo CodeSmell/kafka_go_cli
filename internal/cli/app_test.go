@@ -62,7 +62,8 @@ func TestRunWithValidDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	output, exec := setupCmdWithOutput(t)
-	err := exec("--message-location", tmpDir)
+	// Set max-cycles to 1 to prevent infinite polling in tests
+	err := exec("--message-location", tmpDir, "--max-cycles", "1")
 
 	assert.NoError(t, err)
 	assert.False(t, isCommandHelpShown(output))

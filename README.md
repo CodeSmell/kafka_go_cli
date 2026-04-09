@@ -20,7 +20,7 @@ kafka_go_cli/
   ├── internal/
   │   ├── cli/
   │   │   ├── root.go
-  │   │   └── scan_cmd.go
+  │   │   └── app.go
   │   └── file/
   │       ├── poller.go              # DirectoryPoller + builder + FileProcessor interface
   |       ├── poller_test.go         # Tests
