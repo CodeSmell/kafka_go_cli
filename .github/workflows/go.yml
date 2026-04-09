@@ -46,9 +46,15 @@ jobs:
         script: |
           const fs = require('fs');
           const coverage = fs.readFileSync('coverage.txt', 'utf8');
+          const lines = coverage.split('\n');
+          const totalLine = lines.find(line => line.includes('total:'));
+          const totalCoverage = totalLine ? totalLine.match(/\(statements\)\s+([0-9.]+)%/)?.[1] : 'N/A';
+          
+          const body = `## Test Coverage Report\n\n**Total Coverage: ${totalCoverage}%**\n\n<details>\n<summary>Coverage by Package</summary>\n\n\`\`\`\n${coverage}\n\`\`\`\n\n</details>`;
+          
           github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,
             repo: context.repo.repo,
-            body: `## Code Coverage Report\n\`\`\`\n${coverage}\n\`\`\``
+            body: body
           })
