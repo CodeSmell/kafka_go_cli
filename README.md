@@ -87,9 +87,9 @@ go run ./cmd/kafka-go-cli [flags]
 | Parameter | Description |
 |---|---|
 | `--config` | Optional path to a config file (for example YAML). |
+| `--check` | Validate resolved config and exit. |
 | `--log-level` | Sets logging level. Use `debug`, `info`, `warn`, or `error`. |
 | `--message-location` | Directory to scan for message files (can come from flag, config file, or env). |
-| `--check` | Validate resolved config and exit. |
 | `--run-once` | Runs a single scan cycle then exits. Default is `false`. |
 | `--no-delete-files` | Keeps files after processing. Default is `true`. |
 | `--delay` | Number of ms to wait between polling cycles |

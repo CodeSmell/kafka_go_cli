@@ -113,7 +113,10 @@ func printProblems(cmd *cobra.Command, problems []string) {
 func runScan(cmd *cobra.Command, logger *slog.Logger, settings config.Settings) error {
 	logger.Info("--- starting directory scan ---")
 
+	// TODO: need to set the processor
+	// that we want to handle the file content
 	processor := &NoOpProcessor{}
+
 	poller, err := file.NewDirectoryPollerBuilder(logger).
 		WithMessageLocation(settings.MessageLocation).
 		WithDeleteFiles(!settings.NoDeleteFiles).

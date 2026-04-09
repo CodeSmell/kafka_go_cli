@@ -127,10 +127,11 @@ func (dp *DirectoryPoller) PollDirectory(ctx context.Context) (int, error) {
 
 	// the while loop in Go uses a for loop
 	for keepRunning {
-		dp.logger.Info("polling directory...")
 		pollCycles++
+		dp.logger.Info("polling directory...", "no-op", dp.noOp, "poll-count", pollCycles)
 
 		// get the files in the directory
+		// available for this polling cycle
 		entries, err := os.ReadDir(dp.dirPath)
 		if err != nil {
 			return 0, err
@@ -141,6 +142,9 @@ func (dp *DirectoryPoller) PollDirectory(ctx context.Context) (int, error) {
 			// avoid processing directories
 			if !entry.IsDir() {
 				count++
+				if !dp.noOp {
+					dp.processFile(ctx, dp.dirPath+"/"+entry.Name())
+				}
 			}
 		}
 
@@ -179,26 +183,36 @@ func (dp *DirectoryPoller) shouldContinuePolling(pollCycles int) bool {
 
 // processFile reads the file content and passes it to the processor.
 // Errors are logged but don't stop polling (resilience pattern).
-//
-// TODO: Implement with:
-// - File content reading
-// - Processor.Process() call
-// - Resilient error handling (log but continue)
-// - deleteFile() call on success
 func (dp *DirectoryPoller) processFile(ctx context.Context, filePath string) error {
-	// TODO: Implement
+	// read file content (ReadFile handles all open/close operations)
+	bytes, err := os.ReadFile(filePath)
+	if err != nil {
+		dp.logger.Error("failed to read the file", "file", filePath, "error", err)
+	}
+
+	fileContents := string(bytes)
+
+	dp.logger.Debug(fileContents)
+
+	// let the processor handle the file content
+	if err := dp.processor.Process(ctx, fileContents); err != nil {
+		dp.logger.Error("failed to process the file", "file", filePath, "error", err)
+	}
+
+	// delete file
+	dp.deleteFile(filePath)
+
 	return nil
 }
 
 // deleteFile removes the file if the deleteFiles flag is enabled.
 // Errors are logged but don't cause the polling to stop.
-//
-// TODO: Implement with:
-// - deleteFiles flag check
-// - os.Remove() call
-// - Error logging without propagation
 func (dp *DirectoryPoller) deleteFile(filePath string) {
-	// TODO: Implement
+	if dp.deleteFiles {
+		if err := os.Remove(filePath); err != nil {
+			dp.logger.Error("failed to delete file", "file", filePath, "error", err)
+		}
+	}
 }
 
 // ValidateDirectory checks if a path exists and is a directory.
