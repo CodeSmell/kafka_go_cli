@@ -19,11 +19,15 @@ func loadWithArgs(t *testing.T, args ...string) (Settings, error) {
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(io.Discard)
 
+	// this mimics the flags defined in NewRootCommand
 	cmd.PersistentFlags().String("config", "", "Path to config file (optional)")
 	cmd.PersistentFlags().String("log-level", "info", "Log level (debug, info, warn, error)")
 	cmd.PersistentFlags().String("message-location", "", "Directory path to scan for message files")
 	cmd.PersistentFlags().Bool("run-once", false, "Run a single scan cycle then exits")
 	cmd.PersistentFlags().Bool("no-delete-files", true, "Do not delete files after successful processing")
+	cmd.PersistentFlags().Int("delay", 0, "Number of ms to wait between polling cycles")
+	cmd.PersistentFlags().Int("max-cycles", 0, "Max number of times to poll (default -1 polls indefinitely)")
+	cmd.PersistentFlags().Bool("no-op", false, "Do not process files (for testing)")
 
 	var got Settings
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -46,35 +50,59 @@ func writeTempConfig(t *testing.T, content string) string {
 	return path
 }
 
+func TestLoadNewFieldsDefaults(t *testing.T) {
+	s, err := loadWithArgs(t)
+	assert.Equal(t, "", s.ConfigFile)
+	assert.NoError(t, err)
+	assert.Equal(t, "", s.MessageLocation)
+	assert.False(t, s.RunOnce)
+	assert.True(t, s.NoDeleteFiles)
+	assert.Equal(t, 1000, s.Delay)
+	assert.Equal(t, -1, s.MaxCycles)
+	assert.False(t, s.NoOp)
+}
+
 func TestLoadPrecedence_ConfigOverridesDefaults(t *testing.T) {
 	tmpDir := t.TempDir()
-	cfgPath := writeTempConfig(t, "run_once: true\nlog_level: debug\nmessage_location: "+tmpDir+"\n")
+	cfgPath := writeTempConfig(t, "run_once: true\nlog_level: debug\ndelay: 500\nmax_cycles: 10\nno_op: true\nmessage_location: "+tmpDir+"\n")
 
 	s, err := loadWithArgs(t, "--config", cfgPath)
 	assert.NoError(t, err)
+	assert.Equal(t, cfgPath, s.ConfigFile)
 	assert.Equal(t, "debug", s.LogLevel)
+	assert.Equal(t, tmpDir, s.MessageLocation)
 	assert.True(t, s.RunOnce)
 	assert.True(t, s.NoDeleteFiles) // default is true, not overridden by config
-	assert.Equal(t, tmpDir, s.MessageLocation)
-	assert.Equal(t, cfgPath, s.ConfigFile)
+	assert.Equal(t, 500, s.Delay)
+	assert.Equal(t, 10, s.MaxCycles)
+	assert.True(t, s.NoOp)
 }
 
 func TestLoadPrecedence_EnvOverridesConfig(t *testing.T) {
 	t.Setenv("KAFKA_GO_CLI_LOG_LEVEL", "warn")
+	t.Setenv("KAFKA_GO_CLI_DELAY", "1500")
+	t.Setenv("KAFKA_GO_CLI_NO_OP", "true")
 
-	cfgPath := writeTempConfig(t, "log_level: debug\n")
+	cfgPath := writeTempConfig(t, "log_level: debug\ndelay: 500\nno_op: false\n")
 	s, err := loadWithArgs(t, "--config", cfgPath)
 	assert.NoError(t, err)
 	assert.Equal(t, "warn", s.LogLevel)
+	assert.Equal(t, 1500, s.Delay)
+	assert.True(t, s.NoOp)
 }
 
 func TestLoadPrecedence_CLIOverridesEnvAndConfig(t *testing.T) {
 	t.Setenv("KAFKA_GO_CLI_LOG_LEVEL", "warn")
+	t.Setenv("KAFKA_GO_CLI_DELAY", "1500")
+	t.Setenv("KAFKA_GO_CLI_NO_OP", "true")
 
-	cfgPath := writeTempConfig(t, "log_level: debug\n")
-	s, err := loadWithArgs(t, "--config", cfgPath, "--log-level", "error")
+	cfgPath := writeTempConfig(t, "log_level: debug\ndelay: 500\nno_op: true\n")
+	s, err := loadWithArgs(t, "--config", cfgPath, "--log-level", "error", "--delay", "2000", "--max-cycles", "20", "--no-op=false")
 	assert.NoError(t, err)
 	assert.Equal(t, "error", s.LogLevel)
+	assert.Equal(t, 2000, s.Delay)
+	assert.Equal(t, 20, s.MaxCycles)
+	assert.False(t, s.NoOp)
 }
 
 func TestLoadExplicitConfigPathMissingIsError(t *testing.T) {

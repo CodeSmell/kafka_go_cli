@@ -8,7 +8,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	// loads config package for side-effect of
+	// registering config struct with viper
 	"kafka_go_cli/internal/config"
 	"kafka_go_cli/internal/file"
 	"kafka_go_cli/internal/logging"
@@ -69,6 +72,9 @@ func logResolvedSettings(logger *slog.Logger, settings config.Settings) {
 	logger.Info("message-location", "value", settings.MessageLocation)
 	logger.Info("run-once", "value", settings.RunOnce)
 	logger.Info("no-delete-files", "value", settings.NoDeleteFiles)
+	logger.Info("delay", "value", settings.Delay)
+	logger.Info("max-cycles", "value", settings.MaxCycles)
+	logger.Info("no-op", "value", settings.NoOp)
 }
 
 func runCheck(cmd *cobra.Command, settings config.Settings) error {
@@ -112,6 +118,9 @@ func runScan(cmd *cobra.Command, logger *slog.Logger, settings config.Settings) 
 		WithMessageLocation(settings.MessageLocation).
 		WithDeleteFiles(!settings.NoDeleteFiles).
 		WithKeepRunning(!settings.RunOnce).
+		WithMaxPollCycles(settings.MaxCycles).
+		WithPollInterval(time.Duration(settings.Delay) * time.Millisecond).
+		WithNoOpProcessor(settings.NoOp).
 		WithProcessor(processor).
 		Build()
 	if err != nil {
@@ -122,13 +131,13 @@ func runScan(cmd *cobra.Command, logger *slog.Logger, settings config.Settings) 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	fileCount, err := poller.PollDirectory(ctx, settings.MessageLocation)
+	fileCount, err := poller.PollDirectory(ctx)
 	if err != nil {
 		logger.Error("directory scan failed", "error", err)
 		return err
 	}
 
-	logger.Info("directory scan completed", "file-count", fileCount)
+	logger.Info("directory scan completed", "total-file-count", fileCount)
 	fmt.Fprintf(cmd.OutOrStdout(), "Found %d file(s) in %s\n", fileCount, settings.MessageLocation)
 	return nil
 }

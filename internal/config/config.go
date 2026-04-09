@@ -16,11 +16,14 @@ import (
 )
 
 type Settings struct {
+	ConfigFile      string `json:"config_file"`
 	LogLevel        string `mapstructure:"log_level" json:"log_level"`
 	MessageLocation string `mapstructure:"message_location" json:"message_location"`
 	RunOnce         bool   `mapstructure:"run_once" json:"run_once"`
 	NoDeleteFiles   bool   `mapstructure:"no_delete_files" json:"no_delete_files"`
-	ConfigFile      string `json:"config_file"`
+	Delay           int    `mapstructure:"delay" json:"delay"`
+	MaxCycles       int    `mapstructure:"max_cycles" json:"max_cycles"`
+	NoOp            bool   `mapstructure:"no_op" json:"no_op"`
 }
 
 func Load(cmd *cobra.Command) (Settings, error) {
@@ -38,6 +41,9 @@ func Load(cmd *cobra.Command) (Settings, error) {
 	bindIfChanged(v, "message_location", lookupFlag(cmd, "message-location"))
 	bindIfChanged(v, "run_once", lookupFlag(cmd, "run-once"))
 	bindIfChanged(v, "no_delete_files", lookupFlag(cmd, "no-delete-files"))
+	bindIfChanged(v, "delay", lookupFlag(cmd, "delay"))
+	bindIfChanged(v, "max_cycles", lookupFlag(cmd, "max-cycles"))
+	bindIfChanged(v, "no_op", lookupFlag(cmd, "no-op"))
 
 	configPath, _ := cmd.Root().PersistentFlags().GetString("config")
 	if configPath != "" {
@@ -58,10 +64,14 @@ func Load(cmd *cobra.Command) (Settings, error) {
 }
 
 func setDefaults(v *viper.Viper) {
+	v.SetDefault("config", "")
 	v.SetDefault("log_level", "info")
 	v.SetDefault("message_location", "")
 	v.SetDefault("run_once", false)
 	v.SetDefault("no_delete_files", true)
+	v.SetDefault("delay", 1000)
+	v.SetDefault("max_cycles", -1)
+	v.SetDefault("no_op", false)
 }
 
 func bindIfChanged(v *viper.Viper, key string, flag *pflag.Flag) {

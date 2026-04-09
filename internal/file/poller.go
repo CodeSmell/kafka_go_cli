@@ -21,10 +21,11 @@ type DirectoryPoller struct {
 	keepRunning        bool
 	deleteFiles        bool
 	pollIntervalMillis time.Duration
-	maxPollCycles      int // -1 or 0 = unlimited
-	workerCount        int // number of concurrent workers
+	maxPollCycles      int  // -1 = unlimited
+	noOp               bool // if true, skip actual file processing
 	processor          FileProcessor
 	logger             *slog.Logger
+	workerCount        int // number of concurrent workers
 }
 
 // DirectoryPollerBuilder provides a fluent API for constructing a DirectoryPoller.
@@ -34,21 +35,17 @@ type DirectoryPollerBuilder struct {
 	deleteFiles        bool
 	pollIntervalMillis time.Duration
 	maxPollCycles      int
-	workerCount        int
+	noOp               bool
 	processor          FileProcessor
 	logger             *slog.Logger
+	workerCount        int
 }
 
 // NewDirectoryPollerBuilder creates a new builder for constructing a DirectoryPoller.
 // The logger is required and passed explicitly, following the project's dependency injection pattern.
 func NewDirectoryPollerBuilder(logger *slog.Logger) *DirectoryPollerBuilder {
 	return &DirectoryPollerBuilder{
-		logger:             logger,
-		keepRunning:        false,
-		deleteFiles:        false,
-		pollIntervalMillis: 1000 * time.Millisecond,
-		maxPollCycles:      -1,
-		workerCount:        1,
+		logger: logger,
 	}
 }
 
@@ -82,6 +79,11 @@ func (b *DirectoryPollerBuilder) WithWorkerCount(count int) *DirectoryPollerBuil
 	return b
 }
 
+func (b *DirectoryPollerBuilder) WithNoOpProcessor(noOp bool) *DirectoryPollerBuilder {
+	b.noOp = noOp
+	return b
+}
+
 func (b *DirectoryPollerBuilder) WithProcessor(processor FileProcessor) *DirectoryPollerBuilder {
 	b.processor = processor
 	return b
@@ -102,55 +104,77 @@ func (b *DirectoryPollerBuilder) Build() (*DirectoryPoller, error) {
 		deleteFiles:        b.deleteFiles,
 		pollIntervalMillis: b.pollIntervalMillis,
 		maxPollCycles:      b.maxPollCycles,
-		workerCount:        b.workerCount,
+		noOp:               b.noOp,
 		processor:          b.processor,
 		logger:             b.logger,
+		workerCount:        b.workerCount,
 	}, nil
 }
 
 // DirectoryPoller methods
-
+//
 // PollDirectory scans a directory for files and processes them according to the poller configuration.
 // It validates the directory, enters a polling loop, and processes files with the configured FileProcessor.
 // Context can be used to signal cancellation to stop polling gracefully.
-//
-// TODO: Implement full polling loop with:
-// - Directory validation
-// - File iteration and filtering (regular files only)
-// - Context cancellation support
-// - Poll cycle tracking and shouldContinuePolling logic
-func (dp *DirectoryPoller) PollDirectory(ctx context.Context, dirPath string) (int, error) {
-	dp.logger.Info("polling directory...")
-	if err := ValidateDirectory(dirPath); err != nil {
+func (dp *DirectoryPoller) PollDirectory(ctx context.Context) (int, error) {
+	if err := ValidateDirectory(dp.dirPath); err != nil {
 		return 0, err
 	}
 
-	entries, err := os.ReadDir(dirPath)
-	if err != nil {
-		return 0, err
-	}
+	totalFileCount := 0
+	keepRunning := true
+	pollCycles := 0
 
-	count := 0
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			count++
+	// the while loop in Go uses a for loop
+	for keepRunning {
+		dp.logger.Info("polling directory...")
+		pollCycles++
+
+		// get the files in the directory
+		entries, err := os.ReadDir(dp.dirPath)
+		if err != nil {
+			return 0, err
+		}
+
+		count := 0
+		for _, entry := range entries {
+			// avoid processing directories
+			if !entry.IsDir() {
+				count++
+			}
+		}
+
+		totalFileCount += count
+		keepRunning = dp.shouldContinuePolling(pollCycles)
+
+		if keepRunning {
+			// Use select to allow context cancellation to interrupt
+			// the polling of the directory, enabling graceful shutdown.
+			select {
+			case <-ctx.Done():
+				dp.logger.Info("polling interrupted via context cancellation")
+				return totalFileCount, nil
+			case <-time.After(dp.pollIntervalMillis):
+				// Sleep interval completed normally
+			}
 		}
 	}
 
-	return count, nil
+	return totalFileCount, nil
 }
 
 // shouldContinuePolling determines if the polling loop should continue.
-// Returns false when maxPollCycles is reached, otherwise respects keepRunning flag.
-// If continuing, sleeps for the configured poll interval.
-//
-// TODO: Implement with:
-// - maxPollCycles limit check
-// - keepRunning flag check
-// - sleep between cycles
 func (dp *DirectoryPoller) shouldContinuePolling(pollCycles int) bool {
-	// TODO: Implement
-	return false
+	continuePolling := true
+
+	// run once will take precedence over max cycles if both are set
+	if !dp.keepRunning {
+		continuePolling = false
+	} else if dp.maxPollCycles > 0 && pollCycles >= dp.maxPollCycles {
+		continuePolling = false
+	}
+
+	return continuePolling
 }
 
 // processFile reads the file content and passes it to the processor.

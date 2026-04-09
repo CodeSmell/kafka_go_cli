@@ -19,12 +19,17 @@ func NewRootCommand() *cobra.Command {
 		RunE:          runE,
 	}
 
+	// for the most part we are not setting defaults here
+	// that is done in config package so they are done in one place
 	rootCmd.PersistentFlags().String("config", "", "Path to config file (optional)")
-	rootCmd.PersistentFlags().String("log-level", "info", "Log level (debug, info, warn, error)")
+	rootCmd.PersistentFlags().String("log-level", "", "Log level (debug, info, warn, error)")
 	rootCmd.PersistentFlags().String("message-location", "", "Directory path to scan for message files")
+	rootCmd.PersistentFlags().Bool("check", false, "Validate resolved configuration and exit")
 	rootCmd.PersistentFlags().Bool("run-once", false, "Run a single scan cycle then exits")
 	rootCmd.PersistentFlags().Bool("no-delete-files", true, "Do not delete files after successful processing")
-	rootCmd.PersistentFlags().Bool("check", false, "Validate resolved configuration and exit")
+	rootCmd.PersistentFlags().Int("delay", 0, "Number of ms to wait between polling cycles (e.g., 5000 for 5 seconds)")
+	rootCmd.PersistentFlags().Int("max-cycles", 0, "Max number of times to poll (default -1 polls indefinitely)")
+	rootCmd.PersistentFlags().Bool("no-op", false, "Do not process files (for testing)")
 
 	return rootCmd
 }
