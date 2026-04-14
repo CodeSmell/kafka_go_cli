@@ -23,7 +23,7 @@ type Settings struct {
 	NoDeleteFiles   bool   `mapstructure:"no_delete_files" json:"no_delete_files"`
 	Delay           int    `mapstructure:"delay" json:"delay"`
 	MaxCycles       int    `mapstructure:"max_cycles" json:"max_cycles"`
-	NoOp            bool   `mapstructure:"no_op" json:"no_op"`
+	ProcessorType   string `mapstructure:"processor" json:"processor"`
 }
 
 func Load(cmd *cobra.Command) (Settings, error) {
@@ -43,7 +43,7 @@ func Load(cmd *cobra.Command) (Settings, error) {
 	bindIfChanged(v, "no_delete_files", lookupFlag(cmd, "no-delete-files"))
 	bindIfChanged(v, "delay", lookupFlag(cmd, "delay"))
 	bindIfChanged(v, "max_cycles", lookupFlag(cmd, "max-cycles"))
-	bindIfChanged(v, "no_op", lookupFlag(cmd, "no-op"))
+	bindIfChanged(v, "processor", lookupFlag(cmd, "processor"))
 
 	configPath, _ := cmd.Root().PersistentFlags().GetString("config")
 	if configPath != "" {
@@ -71,7 +71,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("no_delete_files", true)
 	v.SetDefault("delay", 1000)
 	v.SetDefault("max_cycles", -1)
-	v.SetDefault("no_op", false)
+	v.SetDefault("processor", "noop")
 }
 
 func bindIfChanged(v *viper.Viper, key string, flag *pflag.Flag) {
