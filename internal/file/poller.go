@@ -6,14 +6,9 @@ import (
 	"log/slog"
 	"os"
 	"time"
-)
 
-// FileProcessor handles the content of each file found during polling.
-// Implementations can publish to Kafka, write to logs, or perform other actions.
-type FileProcessor interface {
-	// Process handles file content and returns an error if processing fails.
-	Process(ctx context.Context, content string) error
-}
+	"kafka_go_cli/internal/processor"
+)
 
 // DirectoryPoller scans a directory for files and processes them with a configurable strategy.
 type DirectoryPoller struct {
@@ -21,9 +16,8 @@ type DirectoryPoller struct {
 	keepRunning        bool
 	deleteFiles        bool
 	pollIntervalMillis time.Duration
-	maxPollCycles      int  // -1 = unlimited
-	noOp               bool // if true, skip actual file processing
-	processor          FileProcessor
+	maxPollCycles      int // -1 = unlimited
+	processor          processor.FileProcessor
 	logger             *slog.Logger
 	workerCount        int // number of concurrent workers
 }
@@ -35,8 +29,7 @@ type DirectoryPollerBuilder struct {
 	deleteFiles        bool
 	pollIntervalMillis time.Duration
 	maxPollCycles      int
-	noOp               bool
-	processor          FileProcessor
+	processor          processor.FileProcessor
 	logger             *slog.Logger
 	workerCount        int
 }
@@ -79,13 +72,8 @@ func (b *DirectoryPollerBuilder) WithWorkerCount(count int) *DirectoryPollerBuil
 	return b
 }
 
-func (b *DirectoryPollerBuilder) WithNoOpProcessor(noOp bool) *DirectoryPollerBuilder {
-	b.noOp = noOp
-	return b
-}
-
-func (b *DirectoryPollerBuilder) WithProcessor(processor FileProcessor) *DirectoryPollerBuilder {
-	b.processor = processor
+func (b *DirectoryPollerBuilder) WithProcessor(p processor.FileProcessor) *DirectoryPollerBuilder {
+	b.processor = p
 	return b
 }
 
@@ -104,7 +92,6 @@ func (b *DirectoryPollerBuilder) Build() (*DirectoryPoller, error) {
 		deleteFiles:        b.deleteFiles,
 		pollIntervalMillis: b.pollIntervalMillis,
 		maxPollCycles:      b.maxPollCycles,
-		noOp:               b.noOp,
 		processor:          b.processor,
 		logger:             b.logger,
 		workerCount:        b.workerCount,
@@ -128,7 +115,7 @@ func (dp *DirectoryPoller) PollDirectory(ctx context.Context) (int, error) {
 	// the while loop in Go uses a for loop
 	for keepRunning {
 		pollCycles++
-		dp.logger.Info("polling directory...", "no-op", dp.noOp, "poll-count", pollCycles)
+		dp.logger.Info("polling directory...", "poll-count", pollCycles)
 
 		// get the files in the directory
 		// available for this polling cycle
@@ -142,9 +129,7 @@ func (dp *DirectoryPoller) PollDirectory(ctx context.Context) (int, error) {
 			// avoid processing directories
 			if !entry.IsDir() {
 				count++
-				if !dp.noOp {
-					dp.processFile(ctx, dp.dirPath+"/"+entry.Name())
-				}
+				dp.processFile(ctx, dp.dirPath+"/"+entry.Name())
 			}
 		}
 
@@ -192,7 +177,7 @@ func (dp *DirectoryPoller) processFile(ctx context.Context, filePath string) err
 
 	fileContents := string(bytes)
 
-	dp.logger.Debug(fileContents)
+	dp.logger.Debug("processing file", "file", filePath, "size", len(bytes))
 
 	// let the processor handle the file content
 	if err := dp.processor.Process(ctx, fileContents); err != nil {

@@ -21,12 +21,18 @@ kafka_go_cli/
   │   ├── cli/
   │   │   ├── root.go
   │   │   └── app.go
-  │   └── file/
-  │       ├── poller.go              # DirectoryPoller + builder + FileProcessor interface
-  |       ├── poller_test.go         # Tests
-  │       ├── processor_kafka.go     # KafkaFileProcessor implementation
-  │       ├── processor_pulsar.go    # PulsarFileProcessor implementation
-  │       └── processor_log.go       # LogFileProcessor (for testing, or optional built-in)
+  │   ├── file/
+  │   │    ├── poller.go              # DirectoryPoller 
+  |   │    └── poller_test.go
+  │   ├── processor/
+  │   │    ├── processor.go           # the interface/type (Processor)
+  │   │    └── processor_factory.go
+  │   └── processors/
+  │        ├── processor_noop.go
+  │        ├── kafka/
+  │        │     └── processor_kafka.go     # KafkaFileProcessor implementation
+  │        └── pulsar/
+  |              └── processor_pulsar.go    # PulsarFileProcessor implementation
   ├── configs/
   │   └── sample config file
   └── docs/
@@ -94,7 +100,7 @@ go run ./cmd/kafka-go-cli [flags]
 | `--no-delete-files` | Keeps files after processing. Default is `true`. |
 | `--delay` | Number of ms to wait between polling cycles |
 | `--max-cycles` | Max number times to poll. If < 0 then use run-once or keep polling indefinitely. Default is -1 |
-| `--no-op` | will not attempt to do anything with the file (for testing) |
+| `--processor` | specify which processor will handle the files (noop, kafka, pulsar etc). Default is noop |
 
 Logs are structured text logs using Go's standard `log/slog` package.
 
