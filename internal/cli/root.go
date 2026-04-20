@@ -29,7 +29,7 @@ func NewRootCommand() *cobra.Command {
 	rootCmd.PersistentFlags().Bool("no-delete-files", true, "Do not delete files after successful processing")
 	rootCmd.PersistentFlags().Int("delay", 0, "Number of ms to wait between polling cycles (e.g., 5000 for 5 seconds)")
 	rootCmd.PersistentFlags().Int("max-cycles", 0, "Max number of times to poll (default -1 polls indefinitely)")
-	rootCmd.PersistentFlags().Bool("no-op", false, "Do not process files (for testing)")
+	rootCmd.PersistentFlags().String("processor", "noop", "Processor type (kafka, pulsar, noop)")
 
 	return rootCmd
 }

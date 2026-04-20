@@ -27,7 +27,7 @@ func loadWithArgs(t *testing.T, args ...string) (Settings, error) {
 	cmd.PersistentFlags().Bool("no-delete-files", true, "Do not delete files after successful processing")
 	cmd.PersistentFlags().Int("delay", 0, "Number of ms to wait between polling cycles")
 	cmd.PersistentFlags().Int("max-cycles", 0, "Max number of times to poll (default -1 polls indefinitely)")
-	cmd.PersistentFlags().Bool("no-op", false, "Do not process files (for testing)")
+	cmd.PersistentFlags().String("processor", "noop", "Processor type (kafka, pulsar, noop)")
 
 	var got Settings
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -59,12 +59,12 @@ func TestLoadNewFieldsDefaults(t *testing.T) {
 	assert.True(t, s.NoDeleteFiles)
 	assert.Equal(t, 1000, s.Delay)
 	assert.Equal(t, -1, s.MaxCycles)
-	assert.False(t, s.NoOp)
+	assert.Equal(t, "noop", s.ProcessorType)
 }
 
 func TestLoadPrecedence_ConfigOverridesDefaults(t *testing.T) {
 	tmpDir := t.TempDir()
-	cfgPath := writeTempConfig(t, "run_once: true\nlog_level: debug\ndelay: 500\nmax_cycles: 10\nno_op: true\nmessage_location: "+tmpDir+"\n")
+	cfgPath := writeTempConfig(t, "run_once: true\nlog_level: debug\ndelay: 500\nmax_cycles: 10\nprocessor: kafka\nmessage_location: "+tmpDir+"\n")
 
 	s, err := loadWithArgs(t, "--config", cfgPath)
 	assert.NoError(t, err)
@@ -75,34 +75,34 @@ func TestLoadPrecedence_ConfigOverridesDefaults(t *testing.T) {
 	assert.True(t, s.NoDeleteFiles) // default is true, not overridden by config
 	assert.Equal(t, 500, s.Delay)
 	assert.Equal(t, 10, s.MaxCycles)
-	assert.True(t, s.NoOp)
+	assert.Equal(t, "kafka", s.ProcessorType)
 }
 
 func TestLoadPrecedence_EnvOverridesConfig(t *testing.T) {
 	t.Setenv("KAFKA_GO_CLI_LOG_LEVEL", "warn")
 	t.Setenv("KAFKA_GO_CLI_DELAY", "1500")
-	t.Setenv("KAFKA_GO_CLI_NO_OP", "true")
+	t.Setenv("KAFKA_GO_CLI_PROCESSOR", "noop")
 
-	cfgPath := writeTempConfig(t, "log_level: debug\ndelay: 500\nno_op: false\n")
+	cfgPath := writeTempConfig(t, "log_level: debug\ndelay: 500\nprocessor: kafka\n")
 	s, err := loadWithArgs(t, "--config", cfgPath)
 	assert.NoError(t, err)
 	assert.Equal(t, "warn", s.LogLevel)
 	assert.Equal(t, 1500, s.Delay)
-	assert.True(t, s.NoOp)
+	assert.Equal(t, "noop", s.ProcessorType)
 }
 
 func TestLoadPrecedence_CLIOverridesEnvAndConfig(t *testing.T) {
 	t.Setenv("KAFKA_GO_CLI_LOG_LEVEL", "warn")
 	t.Setenv("KAFKA_GO_CLI_DELAY", "1500")
-	t.Setenv("KAFKA_GO_CLI_NO_OP", "true")
+	t.Setenv("KAFKA_GO_CLI_PROCESSOR", "pulsar")
 
-	cfgPath := writeTempConfig(t, "log_level: debug\ndelay: 500\nno_op: true\n")
-	s, err := loadWithArgs(t, "--config", cfgPath, "--log-level", "error", "--delay", "2000", "--max-cycles", "20", "--no-op=false")
+	cfgPath := writeTempConfig(t, "log_level: debug\ndelay: 500\nprocessor: noop\n")
+	s, err := loadWithArgs(t, "--config", cfgPath, "--log-level", "error", "--delay", "2000", "--max-cycles", "20", "--processor", "kafka")
 	assert.NoError(t, err)
 	assert.Equal(t, "error", s.LogLevel)
 	assert.Equal(t, 2000, s.Delay)
 	assert.Equal(t, 20, s.MaxCycles)
-	assert.False(t, s.NoOp)
+	assert.Equal(t, "kafka", s.ProcessorType)
 }
 
 func TestLoadExplicitConfigPathMissingIsError(t *testing.T) {

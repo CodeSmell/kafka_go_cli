@@ -56,7 +56,6 @@ func TestDirectoryPollerBuilder(t *testing.T) {
 		WithKeepRunning(true).
 		WithMaxPollCycles(5).
 		WithPollInterval(500 * time.Millisecond).
-		WithNoOpProcessor(true).
 		WithProcessor(processor).
 		Build()
 
@@ -68,7 +67,6 @@ func TestDirectoryPollerBuilder(t *testing.T) {
 	assert.Equal(t, tmpDir, poller.dirPath)
 	assert.Equal(t, 5, poller.maxPollCycles)
 	assert.Equal(t, 500*time.Millisecond, poller.pollIntervalMillis)
-	assert.True(t, poller.noOp)
 	assert.Equal(t, processor, poller.processor)
 }
 
@@ -91,7 +89,6 @@ func TestDirectoryPollerBuilderDefaults(t *testing.T) {
 	assert.Equal(t, time.Duration(0), poller.pollIntervalMillis)
 	assert.Equal(t, 0, poller.maxPollCycles)
 	assert.Equal(t, 0, poller.workerCount)
-	assert.False(t, poller.noOp)
 }
 
 func TestDirectoryPollerBuilderWithoutProcessor(t *testing.T) {
@@ -271,30 +268,6 @@ func TestProcessFileWithDeletion(t *testing.T) {
 	assert.Equal(t, 1, mockProcessor.callCount)
 	assert.Equal(t, "test message content", mockProcessor.capturedContent[0])
 	assert.NoFileExists(t, tmpDir+"/test_file.txt", "file should be deleted after processing")
-}
-
-func TestProcessorNotCalledWithNoOp(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	tmpDir := t.TempDir()
-
-	// Create test files
-	createTempFile(t, tmpDir, "file1.txt", "foo bar")
-
-	mock := &mockFileProcessor{}
-	poller, _ := NewDirectoryPollerBuilder(logger).
-		WithMessageLocation(tmpDir).
-		WithMaxPollCycles(1).
-		WithNoOpProcessor(true).
-		WithProcessor(mock).
-		Build()
-
-	count, err := poller.PollDirectory(context.Background())
-
-	assert.NoError(t, err)
-	assert.Equal(t, 1, count)
-	assert.False(t, mock.called)
-	assert.Equal(t, 0, mock.callCount)
-	assert.Equal(t, 0, len(mock.capturedContent))
 }
 
 func TestProcessorErrorHandling(t *testing.T) {

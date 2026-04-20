@@ -15,6 +15,7 @@ import (
 	"kafka_go_cli/internal/config"
 	"kafka_go_cli/internal/file"
 	"kafka_go_cli/internal/logging"
+	"kafka_go_cli/internal/processor"
 
 	"github.com/spf13/cobra"
 )
@@ -74,7 +75,7 @@ func logResolvedSettings(logger *slog.Logger, settings config.Settings) {
 	logger.Info("no-delete-files", "value", settings.NoDeleteFiles)
 	logger.Info("delay", "value", settings.Delay)
 	logger.Info("max-cycles", "value", settings.MaxCycles)
-	logger.Info("no-op", "value", settings.NoOp)
+	logger.Info("processor", "value", settings.ProcessorType)
 }
 
 func runCheck(cmd *cobra.Command, settings config.Settings) error {
@@ -113,9 +114,19 @@ func printProblems(cmd *cobra.Command, problems []string) {
 func runScan(cmd *cobra.Command, logger *slog.Logger, settings config.Settings) error {
 	logger.Info("--- starting directory scan ---")
 
-	// TODO: need to set the processor
-	// that we want to handle the file content
-	processor := &NoOpProcessor{}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	proc, err := processor.NewProcessor(ctx, logger, settings)
+	if err != nil {
+		logger.Error("failed to create processor", "error", err)
+		return err
+	}
+	defer func() {
+		if err := proc.Close(); err != nil {
+			logger.Error("could not cleanly close the processor", "error", err)
+		}
+	}()
 
 	poller, err := file.NewDirectoryPollerBuilder(logger).
 		WithMessageLocation(settings.MessageLocation).
@@ -123,16 +134,12 @@ func runScan(cmd *cobra.Command, logger *slog.Logger, settings config.Settings) 
 		WithKeepRunning(!settings.RunOnce).
 		WithMaxPollCycles(settings.MaxCycles).
 		WithPollInterval(time.Duration(settings.Delay) * time.Millisecond).
-		WithNoOpProcessor(settings.NoOp).
-		WithProcessor(processor).
+		WithProcessor(proc).
 		Build()
 	if err != nil {
 		logger.Error("failed to build directory poller", "error", err)
 		return err
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	fileCount, err := poller.PollDirectory(ctx)
 	if err != nil {
@@ -142,15 +149,5 @@ func runScan(cmd *cobra.Command, logger *slog.Logger, settings config.Settings) 
 
 	logger.Info("directory scan completed", "total-file-count", fileCount)
 	fmt.Fprintf(cmd.OutOrStdout(), "Found %d file(s) in %s\n", fileCount, settings.MessageLocation)
-	return nil
-}
-
-// NoOpProcessor is a temporary FileProcessor that does nothing.
-// TODO: Replace with real implementations (KafkaFileProcessor, PulsarFileProcessor, etc.)
-type NoOpProcessor struct{}
-
-// Process implements the FileProcessor interface with a no-op operation.
-func (n *NoOpProcessor) Process(ctx context.Context, content string) error {
-	// TODO: Implement actual processing (publish to Kafka, Pulsar, etc.)
 	return nil
 }
