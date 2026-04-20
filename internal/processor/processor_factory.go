@@ -23,8 +23,8 @@ import (
 type FactoryFunc func(ctx context.Context, logger *slog.Logger, settings config.Settings) (Processor, error)
 
 var (
-	factoriesMu  sync.RWMutex
-	constructors = map[string]FactoryFunc{}
+	factoriesMu      sync.RWMutex
+	factoryFunctions = map[string]FactoryFunc{}
 )
 
 // Panics on duplicate registration, empty name, or nil factory.
@@ -36,10 +36,10 @@ func Register(name string, factory FactoryFunc) {
 
 	factoriesMu.Lock()
 	defer factoriesMu.Unlock()
-	if _, exists := constructors[name]; exists {
+	if _, exists := factoryFunctions[name]; exists {
 		panic("processor: Register called twice for " + name)
 	}
-	constructors[name] = factory
+	factoryFunctions[name] = factory
 }
 
 // NewProcessor creates a processor based on the configured type.
@@ -48,7 +48,7 @@ func NewProcessor(ctx context.Context, logger *slog.Logger, settings config.Sett
 	logger.Info("creating processor", "type", settings.ProcessorType)
 
 	factoriesMu.RLock()
-	factory := constructors[settings.ProcessorType]
+	factory := factoryFunctions[settings.ProcessorType]
 	factoriesMu.RUnlock()
 
 	if factory != nil {
