@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"kafka_go_cli/internal/processor"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,15 +18,15 @@ type mockFileProcessor struct {
 	// called tracks whether Process was called
 	called bool
 	// capturedContent stores all content passed to Process in order
-	capturedContent []string
+	capturedContent []processor.Message
 	// callCount tracks how many times Process was called
 	callCount int
 	// processFunc is an optional custom function to execute on Process calls
-	processFunc func(ctx context.Context, content string) error
+	processFunc func(ctx context.Context, content processor.Message) error
 }
 
 // Process implements the FileProcessor interface for the mock.
-func (m *mockFileProcessor) Process(ctx context.Context, content string) error {
+func (m *mockFileProcessor) Process(ctx context.Context, content processor.Message) error {
 	m.called = true
 	m.callCount++
 	m.capturedContent = append(m.capturedContent, content)
@@ -141,9 +143,9 @@ func TestPollDirectoryWithMaxCyclesAndMultiFiles(t *testing.T) {
 	// The poller should find files on both cycles (3 files * 2 cycles)
 	assert.Equal(t, 6, count)
 	assert.Equal(t, 6, mockProcessor.callCount)
-	assert.Equal(t, "foo bar 1", mockProcessor.capturedContent[0])
-	assert.Equal(t, "foo bar 2", mockProcessor.capturedContent[1])
-	assert.Equal(t, "foo bar 3", mockProcessor.capturedContent[2])
+	assert.Equal(t, "foo bar 1", mockProcessor.capturedContent[0].Body)
+	assert.Equal(t, "foo bar 2", mockProcessor.capturedContent[1].Body)
+	assert.Equal(t, "foo bar 3", mockProcessor.capturedContent[2].Body)
 	assert.FileExists(t, tmpDir+"/file1.txt")
 	assert.FileExists(t, tmpDir+"/file2.txt")
 	assert.FileExists(t, tmpDir+"/file3.txt")
@@ -195,7 +197,7 @@ func TestPollDirectoryContextCancellation(t *testing.T) {
 	assert.Greater(t, count, 0)
 	assert.Less(t, count, 100)
 	assert.True(t, mockProcessor.called)
-	assert.Equal(t, "foo bar 1", mockProcessor.capturedContent[0])
+	assert.Equal(t, "foo bar 1", mockProcessor.capturedContent[0].Body)
 }
 
 func TestPollDirectoryEmptyDirectory(t *testing.T) {
@@ -266,7 +268,7 @@ func TestProcessFileWithDeletion(t *testing.T) {
 	assert.Equal(t, 1, count)
 	assert.True(t, mockProcessor.called)
 	assert.Equal(t, 1, mockProcessor.callCount)
-	assert.Equal(t, "test message content", mockProcessor.capturedContent[0])
+	assert.Equal(t, "test message content", mockProcessor.capturedContent[0].Body)
 	assert.NoFileExists(t, tmpDir+"/test_file.txt", "file should be deleted after processing")
 }
 
@@ -279,8 +281,8 @@ func TestProcessorErrorHandling(t *testing.T) {
 	createTempFile(t, tmpDir, "file2.txt", "content2")
 
 	mockProcessor := &mockFileProcessor{
-		processFunc: func(ctx context.Context, content string) error {
-			if content == "content1" {
+		processFunc: func(ctx context.Context, content processor.Message) error {
+			if content.Body == "content1" {
 				return fmt.Errorf("processor error on first file")
 			}
 			return nil

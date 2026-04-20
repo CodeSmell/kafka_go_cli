@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	// Blank import to register noop processor for integration tests.
+	_ "kafka_go_cli/internal/processors/noop"
 )
 
 // setupCmdWithOutput creates a root command and sets up output capture.

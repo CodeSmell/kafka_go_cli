@@ -166,7 +166,7 @@ func (dp *DirectoryPoller) shouldContinuePolling(pollCycles int) bool {
 	return continuePolling
 }
 
-// processFile reads the file content and passes it to the processor.
+// processFile reads the file content, parses it and passes it to the processor.
 // Errors are logged but don't stop polling (resilience pattern).
 func (dp *DirectoryPoller) processFile(ctx context.Context, filePath string) error {
 	// read file content (ReadFile handles all open/close operations)
@@ -179,8 +179,15 @@ func (dp *DirectoryPoller) processFile(ctx context.Context, filePath string) err
 
 	dp.logger.Debug("processing file", "file", filePath, "size", len(bytes))
 
+	msg, err := ParseMessage(fileContents)
+	if err != nil {
+		// For now, parsing errors shouldn't prevent processing. Fall back to body-only.
+		dp.logger.Error("failed to parse file content", "file", filePath, "error", err)
+		msg = processor.Message{Body: fileContents}
+	}
+
 	// let the processor handle the file content
-	if err := dp.processor.Process(ctx, fileContents); err != nil {
+	if err := dp.processor.Process(ctx, msg); err != nil {
 		dp.logger.Error("failed to process the file", "file", filePath, "error", err)
 	}
 
