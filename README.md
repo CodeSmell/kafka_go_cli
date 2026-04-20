@@ -126,3 +126,17 @@ go run ./cmd/kafka-go-cli \
 --message-location ~/dev/messages \
 --check
 ```
+
+## Adding new processors (in addition to Kafka)
+The application uses a factory and registry pattern. 
+The `main.go` relies on blank imports to load each Go file with a `Processor`
+That delegates to the `init()` functions which will register the `Processor` constructor with the factory. 
+This allows dynamic processor selection based on configuration without hardcoding dependencies.
+
+Adding new processors is trivial: 
+- create the package `foo` under `processors`
+- create the Go file `processor_foo.go`
+- add `New()` method as constructor
+- add `init()` with `processor.Register()` passing in the constructor
+- add the blank-import in `main.go`
+- implement the `Processor` methods (`Process` and `Close`)
