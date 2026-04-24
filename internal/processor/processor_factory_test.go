@@ -3,7 +3,7 @@ package processor
 import (
 	"context"
 
-	"kafka_go_cli/internal/config"
+	"kafka_go_cli/internal/model"
 	"log/slog"
 	"os"
 	"testing"
@@ -16,7 +16,7 @@ import (
 type mockProcessorForTesting struct {
 }
 
-func (m *mockProcessorForTesting) Process(ctx context.Context, message Message) error {
+func (m *mockProcessorForTesting) Process(ctx context.Context, message model.Message) error {
 	return nil
 }
 
@@ -26,14 +26,14 @@ func (m *mockProcessorForTesting) Close() error {
 
 func TestFactoryRegister(t *testing.T) {
 
-	Register("mock", func(ctx context.Context, logger *slog.Logger, settings config.Settings) (Processor, error) {
+	Register("mock", func(ctx context.Context, logger *slog.Logger, settings model.Settings) (Processor, error) {
 		return &mockProcessorForTesting{}, nil
 	})
 
 	// Verify that the factory was registered and can be invoked
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	settings := config.Settings{ProcessorType: "mock"}
+	settings := model.Settings{ProcessorType: "mock"}
 
 	proc, err := NewProcessor(ctx, logger, settings)
 	assert.NoError(t, err)
@@ -43,7 +43,7 @@ func TestFactoryRegister(t *testing.T) {
 func TestFactoryRegisterNoName(t *testing.T) {
 	// Register with empty name should panic
 	assert.Panics(t, func() {
-		Register("", func(ctx context.Context, logger *slog.Logger, settings config.Settings) (Processor, error) {
+		Register("", func(ctx context.Context, logger *slog.Logger, settings model.Settings) (Processor, error) {
 			return &mockProcessorForTesting{}, nil
 		})
 	})
@@ -59,9 +59,27 @@ func TestFactoryRegisterNoFactoryFunc(t *testing.T) {
 func TestFactoryNewProcessorNoneRegistered(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	settings := config.Settings{ProcessorType: "nonexistent"}
+	settings := model.Settings{ProcessorType: "nonexistent"}
 
 	_, err := NewProcessor(ctx, logger, settings)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "processor not registered: nonexistent")
+}
+
+func TestRegisterAndGetConfigParams(t *testing.T) {
+	processorName := "mock"
+	params := []model.ConfigParam{
+		{Name: "param1", Flag: "mock-param1", Description: "mock param1"},
+		{Name: "param2", Flag: "mock-param2", Description: "mock param2"},
+		{Name: "param3", Flag: "mock-param3", Description: "mock param3"},
+	}
+
+	RegisterConfigParams(processorName, params)
+
+	configParams := GetConfigParams(processorName)
+	assert.Equal(t, params, configParams)
+
+	registeredProcessors := GetAllRegisteredProcessors()
+	assert.Contains(t, registeredProcessors, processorName)
+	assert.Equal(t, params, registeredProcessors[processorName])
 }

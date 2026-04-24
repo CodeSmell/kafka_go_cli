@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"kafka_go_cli/internal/config"
+	"kafka_go_cli/internal/model"
 	"kafka_go_cli/internal/processor"
 )
 
@@ -17,9 +17,11 @@ type NoOpProcessor struct {
 // the init function is part of Go and is called when the package is imported
 // we are using that to register with the factory
 func init() {
-	processor.Register("noop", func(ctx context.Context, logger *slog.Logger, settings config.Settings) (processor.Processor, error) {
+	// Register the NoOp constructor with the factory
+	processor.Register("noop", func(ctx context.Context, logger *slog.Logger, settings model.Settings) (processor.Processor, error) {
 		return New(logger), nil
 	})
+	// NoOp processor has no configuration parameters to register
 }
 
 // New is a constructor that creates a new no-op processor.
@@ -28,7 +30,7 @@ func New(logger *slog.Logger) *NoOpProcessor {
 }
 
 // Process is a no-op implementation of the Process method.
-func (n *NoOpProcessor) Process(ctx context.Context, message processor.Message) error {
+func (n *NoOpProcessor) Process(ctx context.Context, message model.Message) error {
 	n.logger.Debug("no-op is processing a file")
 	return nil
 }

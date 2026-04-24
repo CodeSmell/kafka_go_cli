@@ -15,6 +15,7 @@ import (
 	"kafka_go_cli/internal/config"
 	"kafka_go_cli/internal/file"
 	"kafka_go_cli/internal/logging"
+	"kafka_go_cli/internal/model"
 	"kafka_go_cli/internal/processor"
 
 	"github.com/spf13/cobra"
@@ -30,6 +31,8 @@ var errMissingMessageLocation = errors.New("message-location is required")
 func runE(cmd *cobra.Command, args []string) error {
 	checkOnly, _ := cmd.Flags().GetBool("check")
 
+	// load configuration from
+	// all sources with correct precedence
 	settings, err := config.Load(cmd)
 	if err != nil {
 		if checkOnly {
@@ -61,7 +64,7 @@ func runE(cmd *cobra.Command, args []string) error {
 	return runScan(cmd, logger, settings)
 }
 
-func logResolvedSettings(logger *slog.Logger, settings config.Settings) {
+func logResolvedSettings(logger *slog.Logger, settings model.Settings) {
 	logger.Info("--- resolved configuration ---")
 	if settings.ConfigFile == "" {
 		logger.Info("config", "used", false)
@@ -76,9 +79,17 @@ func logResolvedSettings(logger *slog.Logger, settings config.Settings) {
 	logger.Info("delay", "value", settings.Delay)
 	logger.Info("max-cycles", "value", settings.MaxCycles)
 	logger.Info("processor", "value", settings.ProcessorType)
+
+	// log processor-specific configuration values in a structured way without hardcoding keys
+	// TODO: right now default values for processor-specific config are not shown (we add them later)
+	if settings.ProcessorConfig != nil {
+		for key, value := range settings.ProcessorConfig {
+			logger.Info(fmt.Sprintf("processor.%s", key), "value", value)
+		}
+	}
 }
 
-func runCheck(cmd *cobra.Command, settings config.Settings) error {
+func runCheck(cmd *cobra.Command, settings model.Settings) error {
 	problems := make([]string, 0, 4)
 
 	if _, err := logging.New(settings.LogLevel); err != nil {
@@ -111,7 +122,7 @@ func printProblems(cmd *cobra.Command, problems []string) {
 	}
 }
 
-func runScan(cmd *cobra.Command, logger *slog.Logger, settings config.Settings) error {
+func runScan(cmd *cobra.Command, logger *slog.Logger, settings model.Settings) error {
 	logger.Info("--- starting directory scan ---")
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
