@@ -8,18 +8,25 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
+
+	"kafka_go_cli/internal/model"
+	"kafka_go_cli/internal/processor"
 )
 
 // drives testing of the runE function's config loading logic by simulating command execution
 // with various args and config files that are specified in test functions.
-func loadWithArgs(t *testing.T, args ...string) (Settings, error) {
+func loadWithArgs(t *testing.T, args ...string) (model.Settings, error) {
+	return loadWithArgsAndExtraFlags(t, nil, args...)
+}
+
+func loadWithArgsAndExtraFlags(t *testing.T, extraFlags []string, args ...string) (model.Settings, error) {
 	t.Helper()
 
 	cmd := &cobra.Command{Use: "test"}
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(io.Discard)
 
-	// this mimics the flags defined in NewRootCommand
+	// this mimics registering the flags in Cobra (NewRootCommand)
 	cmd.PersistentFlags().String("config", "", "Path to config file (optional)")
 	cmd.PersistentFlags().String("log-level", "info", "Log level (debug, info, warn, error)")
 	cmd.PersistentFlags().String("message-location", "", "Directory path to scan for message files")
@@ -29,7 +36,12 @@ func loadWithArgs(t *testing.T, args ...string) (Settings, error) {
 	cmd.PersistentFlags().Int("max-cycles", 0, "Max number of times to poll (default -1 polls indefinitely)")
 	cmd.PersistentFlags().String("processor", "noop", "Processor type (kafka, pulsar, noop)")
 
-	var got Settings
+	// this mimics registration of processor-specific flags in Cobra (NewRootCommand)
+	for _, flagName := range extraFlags {
+		cmd.PersistentFlags().String(flagName, "", "test")
+	}
+
+	var got model.Settings
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		settings, err := Load(cmd)
 		got = settings
@@ -41,7 +53,7 @@ func loadWithArgs(t *testing.T, args ...string) (Settings, error) {
 	return got, err
 }
 
-func writeTempConfig(t *testing.T, content string) string {
+func writeTempConfigFile(t *testing.T, content string) string {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -64,7 +76,7 @@ func TestLoadNewFieldsDefaults(t *testing.T) {
 
 func TestLoadPrecedence_ConfigOverridesDefaults(t *testing.T) {
 	tmpDir := t.TempDir()
-	cfgPath := writeTempConfig(t, "run_once: true\nlog_level: debug\ndelay: 500\nmax_cycles: 10\nprocessor: kafka\nmessage_location: "+tmpDir+"\n")
+	cfgPath := writeTempConfigFile(t, "run_once: true\nlog_level: debug\ndelay: 500\nmax_cycles: 10\nprocessor: kafka\nmessage_location: "+tmpDir+"\n")
 
 	s, err := loadWithArgs(t, "--config", cfgPath)
 	assert.NoError(t, err)
@@ -83,7 +95,7 @@ func TestLoadPrecedence_EnvOverridesConfig(t *testing.T) {
 	t.Setenv("KAFKA_GO_CLI_DELAY", "1500")
 	t.Setenv("KAFKA_GO_CLI_PROCESSOR", "noop")
 
-	cfgPath := writeTempConfig(t, "log_level: debug\ndelay: 500\nprocessor: kafka\n")
+	cfgPath := writeTempConfigFile(t, "log_level: debug\ndelay: 500\nprocessor: kafka\n")
 	s, err := loadWithArgs(t, "--config", cfgPath)
 	assert.NoError(t, err)
 	assert.Equal(t, "warn", s.LogLevel)
@@ -96,7 +108,7 @@ func TestLoadPrecedence_CLIOverridesEnvAndConfig(t *testing.T) {
 	t.Setenv("KAFKA_GO_CLI_DELAY", "1500")
 	t.Setenv("KAFKA_GO_CLI_PROCESSOR", "pulsar")
 
-	cfgPath := writeTempConfig(t, "log_level: debug\ndelay: 500\nprocessor: noop\n")
+	cfgPath := writeTempConfigFile(t, "log_level: debug\ndelay: 500\nprocessor: noop\n")
 	s, err := loadWithArgs(t, "--config", cfgPath, "--log-level", "error", "--delay", "2000", "--max-cycles", "20", "--processor", "kafka")
 	assert.NoError(t, err)
 	assert.Equal(t, "error", s.LogLevel)
@@ -108,4 +120,54 @@ func TestLoadPrecedence_CLIOverridesEnvAndConfig(t *testing.T) {
 func TestLoadExplicitConfigPathMissingIsError(t *testing.T) {
 	_, err := loadWithArgs(t, "--config", "/path/does/not/exist.yaml")
 	assert.Error(t, err)
+}
+
+func TestLoad_ProcessorSpecificSettings(t *testing.T) {
+	// simulate registering processor-specific config params
+	// that would normally happen in the processor package's init() function
+	// and be available when config needs them during loading
+	processor.RegisterConfigParams("mock", []model.ConfigParam{
+		{Name: "param1", Flag: "mock-param1", Description: "mock param1"},
+		{Name: "param2", Flag: "mock-param2", Description: "mock param2"},
+		{Name: "param3", Flag: "mock-param3", Description: "mock param3"},
+	})
+
+	t.Setenv("KAFKA_GO_CLI_MOCK_PARAM3", "env")
+
+	cfgPath := writeTempConfigFile(t, "processor: mock\nmock:\n  param1: configFile\n")
+
+	extraFlags := []string{"mock-param1", "mock-param2", "mock-param3"}
+	s, err := loadWithArgsAndExtraFlags(t, extraFlags, "--config", cfgPath, "--mock-param2", "cli")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "mock", s.ProcessorType)
+	assert.Equal(t, "configFile", s.ProcessorConfig["param1"])
+	assert.Equal(t, "cli", s.ProcessorConfig["param2"])
+	assert.Equal(t, "env", s.ProcessorConfig["param3"])
+}
+
+func TestLoad_ProcessorSpecificSettings_WithOverrides(t *testing.T) {
+	// simulate registering processor-specific config params
+	// that would normally happen in the processor package's init() function
+	// and be available when config needs them during loading
+	processor.RegisterConfigParams("mock", []model.ConfigParam{
+		{Name: "param1", Flag: "mock-param1", Description: "mock param1"},
+		{Name: "param2", Flag: "mock-param2", Description: "mock param2"},
+		{Name: "param3", Flag: "mock-param3", Description: "mock param3"},
+	})
+
+	t.Setenv("KAFKA_GO_CLI_MOCK_PARAM1", "env1")
+	t.Setenv("KAFKA_GO_CLI_MOCK_PARAM2", "env2")
+
+	cfgPath := writeTempConfigFile(t, "processor: mock\nmock:\n  param1: configFile\n")
+
+	extraFlags := []string{"mock-param1", "mock-param2", "mock-param3"}
+	s, err := loadWithArgsAndExtraFlags(t, extraFlags, "--config", cfgPath, "--mock-param2", "cli2")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "mock", s.ProcessorType)
+	// env should override config file
+	assert.Equal(t, "env1", s.ProcessorConfig["param1"])
+	// CLI should override env
+	assert.Equal(t, "cli2", s.ProcessorConfig["param2"])
 }

@@ -8,35 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"kafka_go_cli/internal/processor"
+	"kafka_go_cli/internal/model"
 	"kafka_go_cli/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 )
-
-// // mockFileProcessor is a mock FileProcessor for testing that tracks calls and captures content.
-// type mockFileProcessor struct {
-// 	// called tracks whether Process was called
-// 	called bool
-// 	// capturedContent stores all content passed to Process in order
-// 	capturedContent []processor.Message
-// 	// callCount tracks how many times Process was called
-// 	callCount int
-// 	// processFunc is an optional custom function to execute on Process calls
-// 	processFunc func(ctx context.Context, content processor.Message) error
-// }
-
-// // Process implements the FileProcessor interface for the mock.
-// func (m *mockFileProcessor) Process(ctx context.Context, content processor.Message) error {
-// 	m.called = true
-// 	m.callCount++
-// 	m.capturedContent = append(m.capturedContent, content)
-
-// 	if m.processFunc != nil {
-// 		return m.processFunc(ctx, content)
-// 	}
-// 	return nil
-// }
 
 func createTempFile(t *testing.T, tmpDir string, fileName string, content string) {
 	testFilePath := tmpDir + "/" + fileName
@@ -51,7 +27,7 @@ func TestDirectoryPollerBuilder(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	tmpDir := t.TempDir()
 
-	processor := &testutil.MockProcessor{}
+	mockProcessor := &testutil.MockProcessor{}
 
 	poller, err := NewDirectoryPollerBuilder(logger).
 		WithMessageLocation(tmpDir).
@@ -59,7 +35,7 @@ func TestDirectoryPollerBuilder(t *testing.T) {
 		WithKeepRunning(true).
 		WithMaxPollCycles(5).
 		WithPollInterval(500 * time.Millisecond).
-		WithProcessor(processor).
+		WithProcessor(mockProcessor).
 		Build()
 
 	assert.NoError(t, err)
@@ -70,7 +46,7 @@ func TestDirectoryPollerBuilder(t *testing.T) {
 	assert.Equal(t, tmpDir, poller.dirPath)
 	assert.Equal(t, 5, poller.maxPollCycles)
 	assert.Equal(t, 500*time.Millisecond, poller.pollIntervalMillis)
-	assert.Equal(t, processor, poller.processor)
+	assert.Equal(t, mockProcessor, poller.processor)
 }
 
 func TestDirectoryPollerBuilderDefaults(t *testing.T) {
@@ -282,7 +258,7 @@ func TestProcessorErrorHandling(t *testing.T) {
 	createTempFile(t, tmpDir, "file2.txt", "content2")
 
 	mockProcessor := &testutil.MockProcessor{
-		ProcessFunc: func(ctx context.Context, content processor.Message) error {
+		ProcessFunc: func(ctx context.Context, content model.Message) error {
 			if content.Body == "content1" {
 				return fmt.Errorf("processor error on first file")
 			}

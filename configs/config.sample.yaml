@@ -1,10 +1,20 @@
-app_name: kafka-go-cli-local
-log_level: debug
-dry_run: false
-run_once: false
-no_delete_files: true
+# Core application settings
+message-location: ./messages
+log-level: info
+processor: kafka
+max-cycles: 5
+run-once: false
+no-delete-files: false
+delay: 1000
+
+# Kafka processor specific configuration
 kafka:
-  brokers:
-    - localhost:9092
-  topic: test-topic
-  acks: 1
+  brokers: "localhost:9092,localhost:9093"
+  topic: "fooTopic"
+  acks: "all"
+  retries: 3
+  retry-delay: 100
+  max-in-flight: 5
+  batch-size: 16384
+  batch-delay: 10
+  producer-id: "theProducer"
