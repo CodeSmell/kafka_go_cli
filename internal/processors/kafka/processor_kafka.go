@@ -10,18 +10,30 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
-// TODO
-// integration tests in Go
-// not readily killable w/ Ctrl-C
-// require a broker and topic to continue
-// does it work at all
-
 // KafkaProcessor publishes messages to Kafka brokers
 type KafkaProcessor struct {
 	logger   *slog.Logger
 	producer *kafka.Producer
 	config   KafkaConfig
 }
+
+type KafkaConfig struct {
+	Brokers        string // "localhost:9092,localhost:9093"
+	Topic          string // Kafka topic to publish to
+	ProducerID     string // Optional: producer.id for batching
+	FlushInterval  int    // ms before auto-flush (0 = manual only)
+	Acks           string // 0, 1 or  "all" for strongest durability
+	Retries        int    // Number of retries for failed sends
+	RetryDelay     int    // ms between retries
+	MaxInflight    int    // Max messages in-flight (unacknowledged)
+	BatchSizeBytes int    // Max batch size in bytes
+	BatchDelay     int    // ms to wait before sending batch
+}
+
+// newKafkaProducer is a seam or hook that
+// defaults to setupKafkaProducer method allowing
+// it to be replaced in unit tests.
+var newKafkaProducer = setupKafkaProducer
 
 // the init function is part of Go and is called when the package is imported
 // we are using that to register with the factory
@@ -49,19 +61,6 @@ func init() {
 	})
 }
 
-type KafkaConfig struct {
-	Brokers        string // "localhost:9092,localhost:9093"
-	Topic          string // Kafka topic to publish to
-	ProducerID     string // Optional: producer.id for batching
-	FlushInterval  int    // ms before auto-flush (0 = manual only)
-	Acks           string // 0, 1 or  "all" for strongest durability
-	Retries        int    // Number of retries for failed sends
-	RetryDelay     int    // ms between retries
-	MaxInflight    int    // Max messages in-flight (unacknowledged)
-	BatchSizeBytes int    // Max batch size in bytes
-	BatchDelay     int    // ms to wait before sending batch
-}
-
 // New creates a new Kafka processor with a connected producer
 func New(ctx context.Context, logger *slog.Logger, settings model.Settings) (*KafkaProcessor, error) {
 	cfg, err := LoadKafkaConfig(settings.ProcessorConfig)
@@ -69,7 +68,7 @@ func New(ctx context.Context, logger *slog.Logger, settings model.Settings) (*Ka
 		return nil, fmt.Errorf("failed to load Kafka config: %w", err)
 	}
 
-	producer, err := setupKafkaProducer(cfg, logger)
+	producer, err := newKafkaProducer(cfg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup Kafka producer: %w", err)
 	}
@@ -85,17 +84,98 @@ func New(ctx context.Context, logger *slog.Logger, settings model.Settings) (*Ka
 
 // Process implements the Processor interface to publish messages to Kafka
 func (k *KafkaProcessor) Process(ctx context.Context, message model.Message) error {
+
+	record := k.convertToKafkaMessage(message)
+
+	// Send asynchronously — deliver reports go to DeliveryReports channel
+	deliveryReports := make(chan kafka.Event, 1)
+	err := k.producer.Produce(record, deliveryReports)
+	if err != nil {
+		k.logger.Error("failed to produce message", "error", err)
+		return err
+	}
+
+	// Wait for delivery report (blocking until message is delivered or fails)
+	event := <-deliveryReports
+	m := event.(*kafka.Message)
+
+	if m.TopicPartition.Error != nil {
+		k.logger.Error("failed to deliver message",
+			"topic", *m.TopicPartition.Topic,
+			"error", m.TopicPartition.Error)
+		return m.TopicPartition.Error
+	}
+
+	k.logger.Info("message published successfully",
+		"topic", *m.TopicPartition.Topic,
+		"partition", m.TopicPartition.Partition,
+		"offset", m.TopicPartition.Offset)
+
 	return nil
+}
+
+func (k *KafkaProcessor) convertToKafkaMessage(message model.Message) *kafka.Message {
+	// Extract key from message (first key if available)
+	var key string
+	if len(message.Keys) > 0 {
+		key = message.Keys[0].Value
+	}
+
+	var headers []kafka.Header
+	if len(message.Headers) > 0 {
+		headers = make([]kafka.Header, 0, len(message.Headers))
+		for _, h := range message.Headers {
+			headers = append(headers, kafka.Header{Key: h.Key, Value: []byte(h.Value)})
+		}
+	}
+
+	record := &kafka.Message{
+		TopicPartition: kafka.TopicPartition{
+			Topic:     &k.config.Topic,
+			Partition: kafka.PartitionAny,
+		},
+		Key:     []byte(key),
+		Headers: headers,
+		Value:   []byte(message.Body),
+	}
+
+	return record
 }
 
 // Close flushes pending messages and closes the producer
 func (k *KafkaProcessor) Close() error {
+	if k.producer != nil {
+		k.logger.Info("closing Kafka producer...")
+		remaining := k.producer.Flush(30000) // 30 second timeout
+		if remaining > 0 {
+			k.logger.Warn("messages remained in queue after flush", "count", remaining)
+		}
+		k.producer.Close()
+	}
 	return nil
 }
 
 // setupKafkaProducer creates and configures a Kafka producer
 func setupKafkaProducer(cfg KafkaConfig, logger *slog.Logger) (*kafka.Producer, error) {
-	return nil, nil
+	configMap := &kafka.ConfigMap{
+		"bootstrap.servers":                     cfg.Brokers,
+		"client.id":                             cfg.ProducerID,
+		"acks":                                  cfg.Acks,
+		"retries":                               cfg.Retries,
+		"retry.backoff.ms":                      cfg.RetryDelay,
+		"max.in.flight.requests.per.connection": cfg.MaxInflight,
+		"batch.size":                            cfg.BatchSizeBytes,
+		"linger.ms":                             cfg.BatchDelay,
+	}
+
+	logger.Debug("creating Kafka producer", "brokers", cfg.Brokers)
+
+	p, err := kafka.NewProducer(configMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create producer: %w", err)
+	}
+
+	return p, nil
 }
 
 // Helper functions to extract values from raw config map
