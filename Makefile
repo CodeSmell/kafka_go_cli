@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := test
-.PHONY: tidy fmt vet test check ci build run clean
+.PHONY: tidy fmt vet test test-integration test-integration-colima check ci build run clean
 
 # Configuration
 CMD_PATH := ./cmd/kafka-go-cli
@@ -17,6 +17,12 @@ vet: fmt
 
 test:
 	go test -v ./...
+
+test-integration:
+	go test -v -tags=integration ./...
+
+test-integration-colima:
+	DOCKER_HOST="unix://$(HOME)/.colima/default/docker.sock" TESTCONTAINERS_RYUK_DISABLED=true go test -v -tags=integration ./...
 
 check: tidy vet test
 

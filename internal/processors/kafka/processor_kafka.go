@@ -20,6 +20,7 @@ type KafkaProcessor struct {
 type KafkaConfig struct {
 	Brokers        string // "localhost:9092,localhost:9093"
 	Topic          string // Kafka topic to publish to
+	AddressFamily  string // Optional: broker address family (for example v4)
 	ProducerID     string // Optional: producer.id for batching
 	FlushInterval  int    // ms before auto-flush (0 = manual only)
 	Acks           string // 0, 1 or  "all" for strongest durability
@@ -51,6 +52,7 @@ func init() {
 	processor.RegisterConfigParams("kafka", []model.ConfigParam{
 		{Name: "topic", Flag: "kafka-topic", Description: "Kafka topic to publish to"},
 		{Name: "brokers", Flag: "kafka-brokers", Description: "Kafka brokers (comma-separated)"},
+		{Name: "broker-address-family", Flag: "kafka-broker-address-family", Description: "Kafka broker address family (for example v4)"},
 		{Name: "acks", Flag: "kafka-acks", Description: "Kafka acks setting (0, 1, or all)"},
 		{Name: "retries", Flag: "kafka-retries", Description: "Number of retries for failed sends"},
 		{Name: "retry-delay", Flag: "kafka-retry-delay", Description: "Milliseconds between retries"},
@@ -167,6 +169,9 @@ func setupKafkaProducer(cfg KafkaConfig, logger *slog.Logger) (*kafka.Producer, 
 		"batch.size":                            cfg.BatchSizeBytes,
 		"linger.ms":                             cfg.BatchDelay,
 	}
+	if cfg.AddressFamily != "" {
+		_ = configMap.SetKey("broker.address.family", cfg.AddressFamily)
+	}
 
 	logger.Debug("creating Kafka producer", "brokers", cfg.Brokers)
 
@@ -208,6 +213,7 @@ func LoadKafkaConfig(rawConfig map[string]interface{}) (KafkaConfig, error) {
 
 	return KafkaConfig{
 		Brokers:        getStringOrDefault(rawConfig, "brokers", "localhost:9092"),
+		AddressFamily:  getStringOrDefault(rawConfig, "broker.address.family", getStringOrDefault(rawConfig, "broker-address-family", "")),
 		Topic:          getStringOrDefault(rawConfig, "topic", "default-topic"),
 		ProducerID:     getStringOrDefault(rawConfig, "producer-id", ""),
 		Acks:           getStringOrDefault(rawConfig, "acks", "all"),
