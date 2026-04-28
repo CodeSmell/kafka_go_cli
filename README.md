@@ -102,6 +102,8 @@ go run ./cmd/kafka-go-cli [flags]
 | `--max-cycles` | Max number times to poll. If < 0 then use run-once or keep polling indefinitely. Default is -1 |
 | `--processor` | specify which processor will handle the files (noop, kafka, pulsar etc). Default is noop |
 
+Processor-specific flags are registered dynamically based on the selected processor. For Kafka, see `--kafka-brokers`, `--kafka-topic` etc
+
 Logs are structured text logs using Go's standard `log/slog` package.
 
 ## Sample commands 
@@ -126,6 +128,65 @@ go run ./cmd/kafka-go-cli \
 --message-location ~/dev/messages \
 --check
 ```
+
+## Testing
+
+This project uses a 2-layer testing strategy:
+
+**Layer 1: Fast Unit Tests** — These tests have no external dependencies and are intended to be fast and portable. They provide fast feedback during development. They often take advantage of mocks and doubles. They can be run with `make test` or `go test ./...`. 
+
+**Layer 2: Integration Tests** — These tests rely on a real Kafka broker via testcontainers-go (requires Docker, Podman, or Colima). They can be run with `make test-integration` or `go test -tags=integration ./...`. These tests automatically provision a Kafka container, publish messages, and verify behavior end-to-end. Tests gracefully skip if no supported container runtime is available.
+
+Note: There was an issue running integration tests with Podman on a Mac and using Docker Desktop can involve licensing issues. [Colima](https://ariel-ibarra.medium.com/goodbye-docker-rancher-desktop-switching-to-colima-for-lightweight-containers-f6a4215486d1) is a CLI only viable alternative on the Mac.
+
+Installing Colima (for integration tests)
+
+```bash
+brew update
+brew upgrade
+brew cleanup
+brew install colima docker
+colima version
+colima version 0.10.1
+```
+
+Running Colima
+
+```bash
+colima start
+docker --context colima version
+```
+
+Run the Kafka integration test with the repo-local target:
+
+```bash
+make test-integration-colima
+```
+
+This target sets `DOCKER_HOST` to the Colima socket and disables Ryuk only for this test command. That avoids changing your global Podman setup or relying on `/var/run/docker.sock`.
+
+### Integration test variants
+
+- Override the broker container image used by the integration test (defaults to Redpanda):
+
+```bash
+KAFKA_IT_IMAGE="redpandadata/redpanda:v23.3.3" make test-integration-colima
+```
+
+
+### Writing tests
+
+Unit tests use the constructor seam pattern, setting `newKafkaProducer` to a stub that returns a mock producer:
+
+```go
+oldProducer := newKafkaProducer
+newKafkaProducer = func(/* args */) (*kafka.Producer, error) {
+    return mockProducer, nil
+}
+defer func() { newKafkaProducer = oldProducer }()
+```
+
+Integration tests use `//go:build integration` to conditionally compile. See `processor_kafka_integration_test.go` for an example.
 
 ## Adding new processors (in addition to Kafka)
 The application uses a factory and registry pattern. 

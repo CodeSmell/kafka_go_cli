@@ -44,6 +44,7 @@ func TestKafkaConfigParamsRegistered(t *testing.T) {
 	expectedFlags := []string{
 		"kafka-topic",
 		"kafka-brokers",
+		"kafka-broker-address-family",
 		"kafka-acks",
 		"kafka-retries",
 		"kafka-retry-delay",
@@ -62,6 +63,7 @@ func TestLoadKafkaConfigDefaults(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "localhost:9092", cfg.Brokers)
+	assert.Equal(t, "", cfg.AddressFamily)
 	assert.Equal(t, "default-topic", cfg.Topic)
 	assert.Equal(t, "", cfg.ProducerID)
 	assert.Equal(t, "all", cfg.Acks)
@@ -74,21 +76,23 @@ func TestLoadKafkaConfigDefaults(t *testing.T) {
 
 func TestLoadKafkaConfigOverrides(t *testing.T) {
 	raw := map[string]interface{}{
-		"brokers":       "kafka1:9092,kafka2:9092",
-		"topic":         "orders",
-		"producer-id":   "cli-1",
-		"acks":          "1",
-		"retries":       7,
-		"retry-delay":   float64(250),
-		"max-in-flight": 9,
-		"batch-size":    float64(4096),
-		"batch-delay":   25,
+		"brokers":               "kafka1:9092,kafka2:9092",
+		"broker-address-family": "v4",
+		"topic":                 "orders",
+		"producer-id":           "cli-1",
+		"acks":                  "1",
+		"retries":               7,
+		"retry-delay":           float64(250),
+		"max-in-flight":         9,
+		"batch-size":            float64(4096),
+		"batch-delay":           25,
 	}
 
 	cfg, err := LoadKafkaConfig(raw)
 	require.NoError(t, err)
 
 	assert.Equal(t, "kafka1:9092,kafka2:9092", cfg.Brokers)
+	assert.Equal(t, "v4", cfg.AddressFamily)
 	assert.Equal(t, "orders", cfg.Topic)
 	assert.Equal(t, "cli-1", cfg.ProducerID)
 	assert.Equal(t, "1", cfg.Acks)
