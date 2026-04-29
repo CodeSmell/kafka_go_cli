@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	"kafka_go_cli/internal/model"
 	"kafka_go_cli/internal/processor"
 )
 
@@ -180,12 +179,7 @@ func (dp *DirectoryPoller) processFile(ctx context.Context, filePath string) err
 
 	dp.logger.Debug("processing file", "file", filePath, "size", len(bytes))
 
-	msg, err := ParseMessage(fileContents)
-	if err != nil {
-		// For now, parsing errors shouldn't prevent processing. Fall back to body-only.
-		dp.logger.Error("failed to parse file content", "file", filePath, "error", err)
-		msg = model.Message{Body: fileContents}
-	}
+	msg := ParseMessage(fileContents)
 
 	// let the processor handle the file content
 	if err := dp.processor.Process(ctx, msg); err != nil {
